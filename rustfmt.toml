@@ -1,0 +1,6 @@
+imports_granularity = "Crate"
+use_field_init_shorthand = true
+
+wrap_comments = true
+comment_width = 80
+format_strings = true
