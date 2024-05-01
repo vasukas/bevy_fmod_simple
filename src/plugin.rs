@@ -1,7 +1,8 @@
 use super::bridge::bridge;
 use bevy::{
+    asset::AsyncReadExt as _,
     prelude::*,
-    reflect::{TypePath, TypeUuid},
+    reflect::TypePath,
     transform::TransformSystem,
     utils::{HashMap, HashSet},
 };
@@ -19,8 +20,7 @@ use std::{sync::Mutex, time::Duration};
 ///
 /// When playback stops, the entity will be despawned. Vice-versa, removing
 /// [`Handle<AudioSource>`] stops playback.
-#[derive(TypeUuid, TypePath)]
-#[uuid = "eff1daad-71f0-4f2a-8d08-7a6cbbd6af02"]
+#[derive(Asset, TypePath)]
 pub struct AudioSource {
     id: EngineId,
 
@@ -568,10 +568,10 @@ impl Plugin for FmodAudioPlugin {
             Some(p)
         };
 
-        app.configure_set(PostUpdate, AudioSystem)
+        app.configure_sets(PostUpdate, AudioSystem)
             .init_resource::<AudioSettings>()
-            .add_asset::<AudioSource>()
-            .add_asset_loader(AudioFileLoader);
+            .init_asset::<AudioSource>()
+            .register_asset_loader(AudioFileLoader);
 
         // system update
         app.add_systems(
@@ -581,7 +581,7 @@ impl Plugin for FmodAudioPlugin {
                 update_system.after(update_listener),
                 update_engine_settings
                     .before(update_system)
-                    .run_if(resource_changed::<AudioSettings>()),
+                    .run_if(resource_changed::<AudioSettings>),
             )
                 .in_set(AudioSystem),
         );
@@ -638,20 +638,23 @@ type EngineId = i32;
 struct AudioFileLoader;
 
 impl bevy::asset::AssetLoader for AudioFileLoader {
+    type Asset = AudioSource;
+    type Settings = ();
+    type Error = String;
+
     fn load<'a>(
         &'a self,
-        bytes: &'a [u8],
-        load_context: &'a mut bevy::asset::LoadContext,
-    ) -> bevy::asset::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
+        reader: &'a mut bevy::asset::io::Reader,
+        _settings: &'a Self::Settings,
+        _load_context: &'a mut bevy::asset::LoadContext,
+    ) -> bevy::utils::BoxedFuture<'a, Result<Self::Asset, Self::Error>> {
         Box::pin(async move {
-            AudioSource::from_memory(bytes)
-                .map(|asset| load_context.set_default_asset(bevy::asset::LoadedAsset::new(asset)))
-                .ok_or_else(|| {
-                    bevy::asset::Error::msg(format!(
-                        "'{}': failed to load",
-                        load_context.path().display()
-                    ))
-                })
+            let mut bytes = vec![];
+            reader
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(|e| format!("failed to load file: {e}"))?;
+            AudioSource::from_memory(&bytes).ok_or_else(|| "failed to parse file".to_string())
         })
     }
 
@@ -786,7 +789,7 @@ fn play_audio(
 
     for (entity, source, transform, looped, parameters, startup_delay, group) in new_audio.iter() {
         let Some(mut commands) = commands.get_entity(entity) else {
-            continue
+            continue;
         };
 
         let looped = looped.is_some();
@@ -830,11 +833,7 @@ fn play_audio(
         commands.insert(AudioInstance {
             id: instance,
             old_position: position,
-            _source: {
-                let mut source = source.clone();
-                source.make_strong(&sounds);
-                source
-            },
+            _source: source.clone(),
         });
         mapping.ids.insert(entity, instance);
     }
@@ -849,7 +848,7 @@ fn stop_audio(
     let mut bridge = BRIDGE.lock().unwrap();
     let bridge = bridge.as_mut().unwrap();
 
-    for entity in removed.iter() {
+    for entity in removed.read() {
         let just_removed = mapping.just_removed.remove(&entity);
         match mapping.ids.remove(&entity) {
             Some(instance) => {
@@ -977,7 +976,7 @@ fn remove_geometry(
     let mut bridge = BRIDGE.lock().unwrap();
     let bridge = bridge.as_mut().unwrap();
 
-    for entity in removed.iter() {
+    for entity in removed.read() {
         match mapping.0.remove(&entity) {
             Some(id) => bridge.pin_mut().free_geometry(id),
             None => error!("removing non-existent geometry for entity {entity:?}"),
@@ -1032,7 +1031,7 @@ fn remove_reverb(
     let mut bridge = BRIDGE.lock().unwrap();
     let bridge = bridge.as_mut().unwrap();
 
-    for entity in removed.iter() {
+    for entity in removed.read() {
         match mapping.0.remove(&entity) {
             Some(id) => bridge.pin_mut().free_reverb(id),
             None => error!("removing non-existent reverb for entity {entity:?}"),
