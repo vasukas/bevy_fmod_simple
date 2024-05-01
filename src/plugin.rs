@@ -6,9 +6,10 @@ use bevy::{
     transform::TransformSystem,
     utils::{HashMap, HashSet},
 };
-use rand::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::{sync::Mutex, time::Duration};
+
+#[cfg(feature = "randomize")]
+use rand::prelude::*;
 
 /// Add [`Handle<AudioSource>`] component to play sound.
 ///
@@ -30,6 +31,7 @@ pub struct AudioSource {
     pub params: AudioParameters,
 
     /// Randomize default parameters on each use
+    #[cfg(feature = "randomize")]
     pub randomize_params: bool,
 }
 
@@ -75,16 +77,24 @@ impl AudioSource {
         Self {
             id,
             params: default(),
+
+            #[cfg(feature = "randomize")]
             randomize_params: false,
         }
     }
 
     fn params(&self) -> AudioParameters {
-        let mut params = self.params;
-        if self.randomize_params {
-            params.randomize();
+        #[cfg(feature = "randomize")]
+        {
+            let mut params = self.params;
+            if self.randomize_params {
+                params.randomize();
+            }
+            params
         }
-        params
+
+        #[cfg(not(feature = "randomize"))]
+        self.params
     }
 
     // TODO(later): implement custom audio source via trait object
@@ -106,8 +116,12 @@ impl Drop for AudioSource {
 pub struct AudioLoop;
 
 /// Add/change at any time to control playback.
-#[derive(Component, Clone, Copy, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Component, Clone, Copy)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioParameters {
     /// Linear volume multiplier; will be multiplied by group and master
     /// volumes.
@@ -153,12 +167,14 @@ impl Default for AudioParameters {
 
 impl AudioParameters {
     /// Randomly change values a bit
+    #[cfg(feature = "randomize")]
     pub fn randomize(&mut self) {
         self.volume *= thread_rng().gen_range(0.95..1.05);
         self.speed *= thread_rng().gen_range(0.95..1.05);
     }
 
     /// Randomly change values a bit
+    #[cfg(feature = "randomize")]
     pub fn get_randomized(mut self) -> Self {
         self.randomize();
         self
@@ -172,12 +188,14 @@ pub struct AudioStartupDelay(pub Duration);
 
 impl AudioStartupDelay {
     /// Set to small randomized delay (<= 10 ms)
+    #[cfg(feature = "randomize")]
     pub fn random() -> Self {
         let max = 0.010; // 10 ms
         Self(Duration::from_secs_f32(thread_rng().gen_range(0. ..max)))
     }
 
     /// Randomly change value a bit
+    #[cfg(feature = "randomize")]
     pub fn randomize(mut self) -> Self {
         let k = thread_rng().gen_range(0.95..1.05);
         self.0 = Duration::from_secs_f32(self.0.as_secs_f32() * k);
@@ -197,7 +215,8 @@ impl AudioStartupDelay {
 /// ATM they are used only for per-group settings, but there are plans for
 /// per-group effect plugins and combining several groups.
 // TODO(later): dont' ignore changes
-#[derive(Component, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[derive(Component, Default, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct AudioGroup(pub i32);
 
 /// Add audio geometry to the engine to occlude spatial sounds.
@@ -207,8 +226,12 @@ pub struct AudioGroup(pub i32);
 ///
 /// Requires [`GlobalTransform`]. Changes to it will be ignored.
 // TODO(later): dont' ignore changes
-#[derive(Component, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Component, Clone, Default)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioGeometry {
     pub polygon_vertices: AudioGeometryData,
     pub params: AudioGeometryParams,
@@ -221,8 +244,12 @@ pub struct AudioGeometry {
 pub type AudioGeometryData = Vec<Vec<Vec3>>;
 
 /// Parameters for audio geometry
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioGeometryParams {
     /// Volume of non-reverberated part of sound behind the geometry, in `[0;
     /// 1]` range.
@@ -249,8 +276,12 @@ impl Default for AudioGeometryParams {
 ///
 /// Requires [`GlobalTransform`]. Changes to it will be ignored.
 // TODO(later): dont' ignore changes
-#[derive(Component, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Component, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioReverbSphere {
     /// Effect is applied in full to sounds closer than that
     pub min_distance: f32,
@@ -272,8 +303,12 @@ impl Default for AudioReverbSphere {
 }
 
 /// Reverb properties
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioReverbProps {
     /// Reverberation decay time.
     ///
@@ -416,8 +451,12 @@ impl AudioReverbProps {
 pub struct AudioListener;
 
 /// Global engine settings
-#[derive(Resource, Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Resource, Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioSettings {
     /// Per-group settings.
     ///
@@ -451,8 +490,12 @@ impl Default for AudioSettings {
 }
 
 /// Per-group engine settings
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioGroupParameters {
     /// Linear volume multiplier for all sounds in the group.
     ///
@@ -467,8 +510,12 @@ impl Default for AudioGroupParameters {
 }
 
 /// Global engine configuration
-#[derive(Resource, Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Resource, Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioEngineSettings {
     /// How much pitch varies with relative speed (Doppler effect).
     ///
@@ -516,7 +563,12 @@ pub struct AudioSystem;
 pub const AUDIO_FILE_EXTENSIONS: &'static [&'static str] = &["flac", "mp3", "ogg", "wav"];
 
 /// Engine configuration which cannot be changed after initialization
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 pub struct AudioEngineInitSettings {
     /// How many sounds may exist at once.
     ///
