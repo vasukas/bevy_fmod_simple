@@ -4,6 +4,8 @@ Simple FMOD (audio engine) plugin for bevy.
 
 This crate is **not free to use** as it requires FMOD license.
 
+You can run interactive 3D demo with `cargo run --example demo`.
+
 ## Dynamic libraries
 
 For running without cargo you need dynamic libraries (.dll, .so) from `fmod/lib`.
