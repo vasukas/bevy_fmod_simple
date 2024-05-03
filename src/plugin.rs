@@ -13,6 +13,8 @@ use rand::prelude::*;
 
 /// Add [`Handle<AudioSource>`] component to play sound.
 ///
+/// **Asset must be already loaded!**
+///
 /// If entity has [`GlobalTransform`], sound will be played as spatial
 /// (relative to an entity with [`AudioListener`]).
 ///
@@ -167,14 +169,15 @@ impl Default for AudioParameters {
 
 impl AudioParameters {
     /// Randomly change values a bit
-    #[cfg(feature = "randomize")]
     pub fn randomize(&mut self) {
-        self.volume *= thread_rng().gen_range(0.95..1.05);
-        self.speed *= thread_rng().gen_range(0.95..1.05);
+        #[cfg(feature = "randomize")]
+        {
+            self.volume *= thread_rng().gen_range(0.95..1.05);
+            self.speed *= thread_rng().gen_range(0.95..1.05);
+        }
     }
 
     /// Randomly change values a bit
-    #[cfg(feature = "randomize")]
     pub fn get_randomized(mut self) -> Self {
         self.randomize();
         self
@@ -522,8 +525,7 @@ pub struct AudioEngineSettings {
     /// With this at 1 effective sound speed is 340 m/s.
     pub doppler_scale: f32,
 
-    /// Used only for doppler. Set to 1 if you use meters, set to 3.28 if you
-    /// use feet.
+    /// Used only for doppler.
     pub distance_scale: f32,
 
     /// Global factor applied to all distance calculations:
@@ -533,15 +535,15 @@ pub struct AudioEngineSettings {
 
     /// Expected max coordinate values.
     ///
-    /// _This isn't a hard limitation, but apparently exceeding it results in
-    /// worse performance._
+    /// This isn't a hard limitation, but apparently exceeding it results in
+    /// worse performance.
     pub max_world_size: f32,
 }
 
 impl Default for AudioEngineSettings {
     fn default() -> Self {
         Self {
-            doppler_scale: 0.33,
+            doppler_scale: 0.33, // IMO it's too strong at 1
             distance_scale: 1.,
             rolloff_scale: 1.,
             max_world_size: 500.,
